@@ -1,0 +1,6 @@
+<launch>
+
+    <include file="$(find realsense2_camera)/launch/rs_camera.launch" />
+    <node pkg="jetson-tracker" name="people_tracker" type="main.py" output = "screen" />
+
+</launch>
