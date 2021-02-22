@@ -46,7 +46,7 @@ def get_controls(target_coord):
     x,y = target_coord[0], target_coord[2]
     angular_z = math.atan2(-x,y)
     linear_x = map(y, 1, 5, 0, 1)
-    print(f"{angular_z:.2f} {linear_x:.2f}")
+    #print(f"{angular_z:.2f} {linear_x:.2f}")
     twist.linear.x = linear_x
     twist.angular.z = angular_z
     return twist

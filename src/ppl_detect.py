@@ -9,6 +9,7 @@ from yolov5.utils.general import xyxy2xywh
 import random
 import rospy
 import numpy as np
+from time import time
 from image_geometry import PinholeCameraModel
 from sensor_msgs.msg import CameraInfo
 from visualization_msgs.msg import Marker, MarkerArray
@@ -27,6 +28,7 @@ class PeopleDetection:
         self.need_cam_info = True
         self.camera_model = PinholeCameraModel()
         self.marker = Marker()
+        self.prev_time = 0
         self.marker_pub = rospy.Publisher("visualization_markers", Marker, queue_size=10)
         self.camera_info = rospy.Subscriber('/camera/depth/camera_info', CameraInfo, self.info_callback)
 
@@ -37,15 +39,17 @@ class PeopleDetection:
         :return: List of detections found on the provided image and
         resulting image with bounding boxes, labels, and confidence %
         """
+        self.prev_time = time()
         self.img = image
         self.width = image.shape[1]
         self.height = image.shape[0]
         detections = self._net.predict(self.img)
-        if detections.n > 0:
-            for *xyxy, cond, cls in detections.pred[0]:
-                if cls == 0:
-                    label = f'{detections.names[int(cls)]} {cond:.2f}'
-                    plot_one_box(xyxy, self.img, label=label, color=colors[int(cls)%10], line_thickness=3)
+        # if detections.n > 0:
+        #     for *xyxy, cond, cls in detections.pred[0]:
+        #         if cls == 0:
+        #             label = f'{detections.names[int(cls)]} {cond:.2f}'
+        #             plot_one_box(xyxy, self.img, label=label, color=colors[int(cls)%10], line_thickness=3)
+        print("FPS: {}".format(1/(time() - self.prev_time)))
         return detections, self.img
 
     def get_person_coordinates(self, depth_image, detections):
