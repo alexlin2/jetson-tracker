@@ -17,7 +17,7 @@ def map(x, in_min, in_max, out_min, out_max):
     return float((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
 
 # function that is called every time there is a new image frame that the ROS subscriber receives
-def callback(rgb_image, depth_image, pd_class, bridge, detection_pub):
+def callback(rgb_image, depth_image, pd_class, bridge, detection_pub, pub_command):
     """
     callback function that uses rgb frame and depth frame to detect people and prints out their (x,y,z) coordinate
     from the perspective of the camera
@@ -37,7 +37,8 @@ def callback(rgb_image, depth_image, pd_class, bridge, detection_pub):
     #print("detected {:d} objects in image".format(detections.n))
     coord_results = ppl_detect_class.get_person_coordinates(cv_depth, detections)
     if coord_results:
-        get_controls(coord_results[0])
+        cmd = get_controls(coord_results[0])
+        pub_command.publish(cmd)
     #print(coord_results)
 
 def get_controls(target_coord):
@@ -46,6 +47,9 @@ def get_controls(target_coord):
     angular_z = math.atan2(-x,y)
     linear_x = map(y, 1, 5, 0, 1)
     print(f"{angular_z:.2f} {linear_x:.2f}")
+    twist.linear.x = linear_x
+    twist.angular.z = angular_z
+    return twist
 
 
 def main():
@@ -64,7 +68,7 @@ def main():
     rgb_sub = message_filters.Subscriber('/camera/color/image_raw', Image, queue_size=1)
     depth_sub = message_filters.Subscriber('/camera/depth/image_rect_raw', Image, queue_size=1)
     ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub], 10, 5, allow_headerless=True)
-    ts.registerCallback(callback, people_detect, bridge, detection_pub)
+    ts.registerCallback(callback, people_detect, bridge, detection_pub, pub_command)
     rospy.spin()
 
 

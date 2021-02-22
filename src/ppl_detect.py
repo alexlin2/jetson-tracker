@@ -59,7 +59,7 @@ class PeopleDetection:
         coord_list = []
         
         for *xywh, cond, cls in detections.xywh[0]:
-            if cls == 0 and cond > 0.5:
+            if cls == 0 and cond > 0.7:
                 x,y,w,h = int(xywh[0]),int(xywh[1]),int(xywh[2]),int(xywh[3]),
                 depth = depth_image[int(y), int(x)]
                 depth_array = depth_image[int(y-h/5):int(y+h/10),int(x-w/4):int(x+w/4)].flatten()
