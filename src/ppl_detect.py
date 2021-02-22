@@ -3,9 +3,8 @@
 This file holds the PeopleDetection class that can be used to detect objects using a SSD model trained on COCO datasets.
 Class has functions that can get 3d coordinates of detections and create Marker Spheres for visualizations
 """
-from yolov5 import YOLOv5
-from yolov5.utils.plots import color_list, plot_one_box
-from yolov5.utils.general import xyxy2xywh
+import jetson.inference
+import jetson.utils
 import random
 import rospy
 import numpy as np
@@ -21,14 +20,13 @@ colors = color_list()
 class PeopleDetection:
     """ People Detection class with useful functions for getting coordinates of detections"""
     def __init__(self):
-        self._net = YOLOv5(model_path, device) #jetson.inference.detectNet("ssd-mobilenet-v2")
+        self._net = jetson.inference.detectNet("ssd-mobilenet-v2")
         self.img = None
         self.width = None
         self.height = None
         self.need_cam_info = True
         self.camera_model = PinholeCameraModel()
         self.marker = Marker()
-        self.prev_time = 0
         self.marker_pub = rospy.Publisher("visualization_markers", Marker, queue_size=10)
         self.camera_info = rospy.Subscriber('/camera/depth/camera_info', CameraInfo, self.info_callback)
 
@@ -39,18 +37,12 @@ class PeopleDetection:
         :return: List of detections found on the provided image and
         resulting image with bounding boxes, labels, and confidence %
         """
-        self.prev_time = time()
-        self.img = image
+        self.img = self.img = jetson.utils.cudaFromNumpy(image)
         self.width = image.shape[1]
         self.height = image.shape[0]
-        detections = self._net.predict(self.img)
-        if detections.n > 0:
-            for *xyxy, cond, cls in detections.pred[0]:
-                if cls == 0:
-                    label = f'{detections.names[int(cls)]} {cond:.2f}'
-                    plot_one_box(xyxy, self.img, label=label, color=colors[int(cls)%10], line_thickness=3)
-        print("FPS: {}".format(1/(time() - self.prev_time)))
-        return detections, self.img
+        detections = self._net.Detect(self.img, self.width, self.height)
+        print("The inference is happening at " + str(self._net.GetNetworkFPS()) + " FPS")
+        return detections, jetson.utils.cudaToNumpy(self.img)
 
     def get_person_coordinates(self, depth_image, detections):
         """
@@ -62,9 +54,10 @@ class PeopleDetection:
         """
         coord_list = []
         
-        for *xywh, cond, cls in detections.xywh[0]:
-            if cls == 0 and cond > 0.7:
-                x,y,w,h = int(xywh[0]),int(xywh[1]),int(xywh[2]),int(xywh[3]),
+        for det in detections:
+            if det.ClassID == 1 and det.Confidence > 0.5:
+                x, y = det.Center
+                w, h = det.Width, det.Height
                 depth = depth_image[int(y), int(x)]
                 depth_array = depth_image[int(y-h/5):int(y+h/10),int(x-w/4):int(x+w/4)].flatten()
                 depth = np.median(depth_array[np.nonzero(depth_array)]) / 1000
@@ -72,8 +65,7 @@ class PeopleDetection:
                 #print(f'{x} {y} {depth:.2f}')
                 self.marker = self.make_marker(person_coord)
                 coord_list.append(person_coord)
-
-        self.marker_pub.publish(self.marker)
+                self.marker_pub.publish(self.marker)
         return coord_list
 
     def _get_coord(self, person_depth, x, y):
