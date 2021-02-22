@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/robotai/catkin_ws/src/jetson-tracker/devel/setup.sh
