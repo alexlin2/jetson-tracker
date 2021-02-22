@@ -1,16 +1,20 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 """
 This file uses the rgb and depth feed from the topics published by a Intel RealSense camera to detect people and
 returns their poses relative to the frame of the camera.
 Uses the jetson-inference package found here: https://github.com/dusty-nv/jetson-inference
 """
 import rospy
+import math
 import message_filters
 
+from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 from ppl_detect import PeopleDetection
 
+def map(x, in_min, in_max, out_min, out_max):
+    return float((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
 
 # function that is called every time there is a new image frame that the ROS subscriber receives
 def callback(rgb_image, depth_image, pd_class, bridge, detection_pub):
@@ -29,11 +33,19 @@ def callback(rgb_image, depth_image, pd_class, bridge, detection_pub):
     cv_rgb = bridge.imgmsg_to_cv2(rgb_image, "rgba8")
     cv_depth = bridge.imgmsg_to_cv2(depth_image, "passthrough")
     detections, result_img = ppl_detect_class.get_detections(cv_rgb)
-    print(type(result_img))
     detection_pub.publish(bridge.cv2_to_imgmsg(result_img, "rgba8"))
-    print("detected {:d} objects in image".format(len(detections)))
+    #print("detected {:d} objects in image".format(detections.n))
     coord_results = ppl_detect_class.get_person_coordinates(cv_depth, detections)
-    print(coord_results)
+    if coord_results:
+        get_controls(coord_results[0])
+    #print(coord_results)
+
+def get_controls(target_coord):
+    twist = Twist()
+    x,y = target_coord[0], target_coord[2]
+    angular_z = math.atan2(-x,y)
+    linear_x = map(y, 1, 5, 0, 1)
+    print(f"{angular_z:.2f} {linear_x:.2f}")
 
 
 def main():
@@ -47,9 +59,10 @@ def main():
 
     people_detect = PeopleDetection()
     bridge = CvBridge()
-    detection_pub = rospy.Publisher("detected_image", Image)
-    rgb_sub = message_filters.Subscriber('/camera/color/image_raw', Image)
-    depth_sub = message_filters.Subscriber('/camera/depth/image_rect_raw', Image)
+    pub_command = rospy.Publisher('/robot/navigation/input', Twist, queue_size=1)
+    detection_pub = rospy.Publisher("detected_image", Image, queue_size=1)
+    rgb_sub = message_filters.Subscriber('/camera/color/image_raw', Image, queue_size=1)
+    depth_sub = message_filters.Subscriber('/camera/depth/image_rect_raw', Image, queue_size=1)
     ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub], 10, 5, allow_headerless=True)
     ts.registerCallback(callback, people_detect, bridge, detection_pub)
     rospy.spin()

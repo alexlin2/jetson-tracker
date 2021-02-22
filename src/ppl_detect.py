@@ -1,27 +1,33 @@
+#!/usr/bin/python3
 """
 This file holds the PeopleDetection class that can be used to detect objects using a SSD model trained on COCO datasets.
 Class has functions that can get 3d coordinates of detections and create Marker Spheres for visualizations
 """
-import jetson.inference
-import jetson.utils
+from yolov5 import YOLOv5
+from yolov5.utils.plots import color_list, plot_one_box
+from yolov5.utils.general import xyxy2xywh
+import random
 import rospy
 import numpy as np
 from image_geometry import PinholeCameraModel
 from sensor_msgs.msg import CameraInfo
 from visualization_msgs.msg import Marker, MarkerArray
 
+model_path = "/home/beast/yolov5/weights/yolov5s.pt"
+device = "cuda"
+colors = color_list()
 
 class PeopleDetection:
     """ People Detection class with useful functions for getting coordinates of detections"""
     def __init__(self):
-        self._net = jetson.inference.detectNet("ssd-mobilenet-v2")
+        self._net = YOLOv5(model_path, device) #jetson.inference.detectNet("ssd-mobilenet-v2")
         self.img = None
         self.width = None
         self.height = None
         self.need_cam_info = True
         self.camera_model = PinholeCameraModel()
-        self.marker_array = MarkerArray()
-        self.marker_pub = rospy.Publisher("visualization_markers", MarkerArray, queue_size=500)
+        self.marker = Marker()
+        self.marker_pub = rospy.Publisher("visualization_markers", Marker, queue_size=10)
         self.camera_info = rospy.Subscriber('/camera/depth/camera_info', CameraInfo, self.info_callback)
 
     def get_detections(self, image):
@@ -31,12 +37,16 @@ class PeopleDetection:
         :return: List of detections found on the provided image and
         resulting image with bounding boxes, labels, and confidence %
         """
-        self.img = jetson.utils.cudaFromNumpy(image)
+        self.img = image
         self.width = image.shape[1]
         self.height = image.shape[0]
-        detections = self._net.Detect(self.img, self.width, self.height)
-        print("The inference is happening at " + str(self._net.GetNetworkFPS()) + " FPS")
-        return detections, jetson.utils.cudaToNumpy(self.img)
+        detections = self._net.predict(self.img)
+        if detections.n > 0:
+            for *xyxy, cond, cls in detections.pred[0]:
+                if cls == 0:
+                    label = f'{detections.names[int(cls)]} {cond:.2f}'
+                    plot_one_box(xyxy, self.img, label=label, color=colors[int(cls)%10], line_thickness=3)
+        return detections, self.img
 
     def get_person_coordinates(self, depth_image, detections):
         """
@@ -47,24 +57,19 @@ class PeopleDetection:
         :return: list of coordinates of every person's coordinates
         """
         coord_list = []
-        count = 0
-        for det in detections:
-            count = count + 1
-            if det.ClassID == 1:
-                person_center = det.Center
-                x, y = person_center
-                depth_arr = []
-                try:
-                    for x in range(int(x) - 2, int(x) + 3):
-                        for y in range(int(y) - 2, int(y) + 3):
-                            depth_arr.append(depth_image[int(x), int(y)] / 1000.0)
-                    depth = np.mean(depth_arr)
-                    person_coord = self._get_coord(depth, x, y)
-                    self.make_marker(person_coord, count)
-                    coord_list.append(person_coord)
-                except IndexError:
-                    self.marker_pub.publish(self.marker_array)
-        self.marker_pub.publish(self.marker_array)
+        
+        for *xywh, cond, cls in detections.xywh[0]:
+            if cls == 0 and cond > 0.5:
+                x,y,w,h = int(xywh[0]),int(xywh[1]),int(xywh[2]),int(xywh[3]),
+                depth = depth_image[int(y), int(x)]
+                depth_array = depth_image[int(y-h/5):int(y+h/10),int(x-w/4):int(x+w/4)].flatten()
+                depth = np.median(depth_array[np.nonzero(depth_array)]) / 1000
+                person_coord = self._get_coord(depth, x, y)
+                #print(f'{x} {y} {depth:.2f}')
+                self.marker = self.make_marker(person_coord)
+                coord_list.append(person_coord)
+
+        self.marker_pub.publish(self.marker)
         return coord_list
 
     def _get_coord(self, person_depth, x, y):
@@ -81,7 +86,7 @@ class PeopleDetection:
         point_3d = [j * person_depth for j in normalized_vector]
         return point_3d
     
-    def make_marker(self, point_3d, count):
+    def make_marker(self, point_3d):
         """
         Function that creates Marker Spheres for people detected for visualization of people with respect to the camera
         and car (given camera is attached to car)
@@ -94,23 +99,23 @@ class PeopleDetection:
         person_marker.ns = "person"
         person_marker.type = person_marker.SPHERE
         person_marker.action = person_marker.ADD
-        person_marker.id = count
-        person_marker.pose.position.x = point_3d[0] * -1
+        person_marker.id = 0
+        person_marker.pose.position.x = point_3d[0] 
         person_marker.pose.position.y = point_3d[2]
         person_marker.pose.position.z = point_3d[1]
         person_marker.pose.orientation.x = 0.0
         person_marker.pose.orientation.y = 0.0
         person_marker.pose.orientation.z = 0.0
         person_marker.pose.orientation.w = 1.0
-        person_marker.scale.x = 0.25
-        person_marker.scale.y = 0.25
-        person_marker.scale.z = 0.25
+        person_marker.scale.x = 1
+        person_marker.scale.y = 1
+        person_marker.scale.z = 1
         person_marker.color.a = 1.0
         person_marker.color.r = 0.0
         person_marker.color.g = 1.0
         person_marker.color.b = 0.0
         person_marker.lifetime = rospy.Duration(1)
-        self.marker_array.markers.append(person_marker)
+        return person_marker
 
     def info_callback(self, info):
         """ Helper callback function for getting camera info for image_geometry package, only used one time"""
