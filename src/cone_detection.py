@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+from yolov5 import YOLOv5
+from yolov5.utils.plots import colors, plot_one_box
+from yolov5.utils.general import xyxy2xywh
+import random
+import rospy
+import message_filters
+import cv2
+
+import numpy as np
+from time import time
+from image_geometry import PinholeCameraModel
+from sensor_msgs.msg import CameraInfo
+from visualization_msgs.msg import Marker, MarkerArray
+from geometry_msgs.msg import Twist
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+
+model_path = "/home/alex/catkin_ws/src/jetson-tracker/src/best.pt"
+device = 'cuda'
+net = YOLOv5(model_path, device)
+
+class ConeDetector:
+
+    def __init__(self, net, debug = True):
+        self.bridge = CvBridge()
+        self.debug = debug
+        self.net = net
+        self.rgb_frame = None
+        self.depth_frame = None
+        self.debug_frame = None
+        self.need_cam_info = True
+        self.camera_model = PinholeCameraModel()
+        self.marker_pub = rospy.Publisher("visualization_markers", MarkerArray, queue_size=1)
+        self.camera_info = rospy.Subscriber('/camera/aligned_depth_to_color/camera_info', CameraInfo, self.info_callback)
+        self.detected_targets = []
+
+    def get_detection(self):
+        detections = self.net.predict(self.rgb_frame)
+        detected = []
+        for bbox in detections.pred:
+            for *xyxy, cond, cls in bbox:
+                if cls == 0 and cond > 0.5:
+                    x,y,w,h = int(xyxy[0]),int(xyxy[1]),int(xyxy[2] - xyxy[0]),int(xyxy[3]-xyxy[1])
+                    if self.debug:
+                        label = f'{detections.names[int(cls)]} {cond:.2f}'
+                        plot_one_box(xyxy, self.debug_frame, label=label, color=colors(int(cls),True), line_thickness=3)
+                    detected.append([x,y,w,h])
+        self.detected_targets = detected
+
+    def get_cone_coordinates(self):
+        """
+        Function that filters through detections and calculates the 3d coordinates of every cone detected in list of
+        detections
+        :param depth_image: grayscale depth frame from realsense camera
+        :param detections: list of detections found from rgb inference
+        :return: list of coordinates of every cone's coordinates
+        """
+        coord_list = []
+        markerArray = MarkerArray()
+        
+        for xywh in self.detected_targets:
+            x,y,w,h = xywh[0], xywh[1], xywh[2], xywh[3]
+            x = x+0.5*w
+            y = y+0.5*h
+            depth = self.depth_frame[int(y), int(x)]
+            depth_array = self.depth_frame[int(y-h/10):int(y+h/5),int(x-w/4):int(x+w/4)].flatten()
+            cv2.rectangle(self.debug_frame, (int(x-w/4), int(y-h/10)), (int(x+w/4), int(y+h/5)),
+				(0, 255, 255), 2)
+            depth = np.median(depth_array[np.nonzero(depth_array)]) / 1000
+            cone_coord = self._get_coord(depth, x, y)
+            #print(f'{x} {y} {depth:.2f}')
+            marker = self.make_marker(cone_coord)
+            markerArray.markers.append(marker)
+            coord_list.append(cone_coord)
+        self.marker_pub.publish(markerArray)
+        return coord_list
+
+    def _get_coord(self, cone_depth, x, y):
+        """
+        Helper function to calculate 3d coordinates using image_geometry package given pixel of cone detected and
+        respective depth value mapping
+        :param cone_depth: depth value at pixel representing center of cone detected
+        :param x: horizontal pixel value
+        :param y: vertial pixel value
+        :return: list of [x,y,z] of cone relative to camera
+        """
+        unit_vector = self.camera_model.projectPixelTo3dRay((x, y))
+        normalized_vector = [i / unit_vector[2] for i in unit_vector]
+        point_3d = [j * cone_depth for j in normalized_vector]
+        return point_3d
+
+    def make_marker(self, point_3d):
+        """
+        Function that creates Marker Spheres for people detected for visualization of people with respect to the camera
+        and car (given camera is attached to car)
+        Adds detections to a MarkerArray List
+        :param point_3d: calcualted 3d point of cone in image
+        :param count: number of people detected
+        """
+        cone_marker = Marker()
+        cone_marker.header.frame_id = "map"
+        cone_marker.ns = "cone" + str(np.random.randint(100))
+        cone_marker.type = cone_marker.CYLINDER
+        cone_marker.action = cone_marker.ADD
+        cone_marker.id = 0
+        cone_marker.pose.position.x = point_3d[0] 
+        cone_marker.pose.position.y = point_3d[2]
+        cone_marker.pose.position.z = point_3d[1]
+        cone_marker.pose.orientation.x = 0.0
+        cone_marker.pose.orientation.y = 0.0
+        cone_marker.pose.orientation.z = 0.0
+        cone_marker.pose.orientation.w = 1.0
+        cone_marker.scale.x = 0.2
+        cone_marker.scale.y = 0.2
+        cone_marker.scale.z = 0.2
+        cone_marker.color.a = 1.0
+        cone_marker.color.r = 1.0
+        cone_marker.color.g = 0.0
+        cone_marker.color.b = 0.0
+        cone_marker.lifetime = rospy.Duration(1)
+        return cone_marker
+
+    def update(self, rgb_frame, depth_frame):
+        self.rgb_frame = self.bridge.imgmsg_to_cv2(rgb_frame, "rgba8")
+        depth_frame_16 = self.bridge.imgmsg_to_cv2(depth_frame, "passthrough")
+        df_dp = np.expand_dims(depth_frame_16, axis=-1).astype(np.uint8)
+        df_dp = np.tile(df_dp, (1, 1, 3))
+        self.debug_frame = cv2.cvtColor(df_dp, cv2.COLOR_RGB2RGBA)
+        self.depth_frame = self.bridge.imgmsg_to_cv2(depth_frame, "passthrough")
+        self.get_detection()
+
+    def info_callback(self, info):
+        """ Helper callback function for getting camera info for image_geometry package, only used one time"""
+        if self.need_cam_info:
+            print("got camera info")
+            self.camera_model.fromCameraInfo(info)
+            self.need_cam_info = False
+
+def callback(rgb_frame, depth_frame, detector, detection_pub):
+    detector.update(rgb_frame, depth_frame)
+    
+    coordlist = detector.get_cone_coordinates()
+    detection_pub.publish(detector.bridge.cv2_to_imgmsg(detector.debug_frame, "rgba8"))
+    if len(coordlist) > 0:
+        x,y = coordlist[0][0], coordlist[0][2]
+        print(str(x) + " " + str(y))
+
+if __name__ == '__main__':
+
+    rospy.init_node('ConeDetection', anonymous=True)
+
+    detector = ConeDetector(net)
+    detection_pub = rospy.Publisher("detected_image", Image, queue_size=1)
+    rgb_sub = message_filters.Subscriber('/camera/color/image_raw', Image, queue_size=1)
+    depth_sub = message_filters.Subscriber('/camera/aligned_depth_to_color/image_raw', Image, queue_size=1)
+    ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub], 10, 5, allow_headerless=True)
+    ts.registerCallback(callback, detector, detection_pub)
+    
+    rospy.spin()
