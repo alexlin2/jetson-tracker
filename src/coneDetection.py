@@ -36,7 +36,7 @@ class ConeDetector:
         detected = []
         for bbox in detections.pred:
             for *xyxy, cond, cls in bbox:
-                if cls == 0 and cond > 0.5:
+                if cls == 0 and cond > 0.7:
                     x,y,w,h = int(xyxy[0]),int(xyxy[1]),int(xyxy[2] - xyxy[0]),int(xyxy[3]-xyxy[1])
                     if self.debug:
                         label = f'{detections.names[int(cls)]} {cond:.2f}'
@@ -79,9 +79,6 @@ class ConeDetector:
 				(0, 255, 255), 2)
             depth = np.median(depth_array[np.nonzero(depth_array)]) / 1000
             cone_coord = self._get_coord(depth, x, y)
-            #print(f'{x} {y} {depth:.2f}')
-            marker = self.make_marker(cone_coord)
-            self.marker_array.markers.append(marker)
             cone = PointStamped()
             cone.point.x, cone.point.y, cone.point.z = cone_coord[0], cone_coord[2], cone_coord[1]
             cone_list.append(cone)
