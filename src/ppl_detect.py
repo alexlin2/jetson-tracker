@@ -13,10 +13,6 @@ from image_geometry import PinholeCameraModel
 from sensor_msgs.msg import CameraInfo
 from visualization_msgs.msg import Marker, MarkerArray
 
-model_path = "/home/robotai/yolov5/weights/yolov5s.pt"
-device = "cuda"
-colors = color_list()
-
 class PeopleDetection:
     """ People Detection class with useful functions for getting coordinates of detections"""
     def __init__(self):
@@ -41,7 +37,7 @@ class PeopleDetection:
         self.width = image.shape[1]
         self.height = image.shape[0]
         detections = self._net.Detect(self.img, self.width, self.height)
-        print("The inference is happening at " + str(self._net.GetNetworkFPS()) + " FPS")
+       	# print("The inference is happening at " + str(self._net.GetNetworkFPS()) + " FPS")
         return detections, jetson.utils.cudaToNumpy(self.img)
 
     def get_person_coordinates(self, depth_image, detections):

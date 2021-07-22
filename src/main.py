@@ -44,8 +44,9 @@ def callback(rgb_image, depth_image, pd_class, bridge, detection_pub, pub_comman
 def get_controls(target_coord):
     twist = Twist()
     x,y = target_coord[0], target_coord[2]
-    angular_z = math.atan2(-x,y)
-    linear_x = map(y, 1, 5, 0, 1)
+    angular_z = math.atan2(x,y)
+    linear_x = map(y, 1, 3, 0, 1)
+    linear_x = min(linear_x,0.65)
     print(f"{angular_z:.2f} {linear_x:.2f}")
     twist.linear.x = linear_x
     twist.angular.z = angular_z
