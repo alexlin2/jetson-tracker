@@ -6,10 +6,13 @@ import numpy as np
 import torch
 import random
 from collections import deque
+import os
+
+print(os.getcwd())
 
 model_path = "src/best.pt"
-device = 'cpu'
-cam = cv2.VideoCapture(0)
+device = 'cuda'
+cam = cv2.VideoCapture(-1)
 
 cam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -48,7 +51,6 @@ class PeopleTracker:
         self.numOfTrackedTargets = len(self.detected_targets)
             
     def update_tracking(self):
-        print(self.numOfTrackedTargets)
         for target in self.tracked_targets:
             if not target.update(self.frame, self.debug_frame):
                 self.tracked_targets.remove(target)
