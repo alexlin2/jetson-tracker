@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-from cone_tracker import TrackedTarget, WaypointGate
-from cone_detection import ConeDetector
+from coneTracker import TrackedTarget, WaypointGate
+from coneDetection import ConeDetector
+from visualization_msgs.msg import Marker, MarkerArray
 from yolov5 import YOLOv5
 
 import rospy
@@ -13,7 +14,7 @@ import cv2
 
 from sensor_msgs.msg import Image
 
-model_path = "/home/alexlin/catkin_ws/src/jetson-tracker/src/best.pt"
+model_path = "/home/alex/catkin_ws/src/jetson-tracker/src/best.pt"
 device = 'cuda'
 net = YOLOv5(model_path, device)
 
@@ -30,17 +31,34 @@ class Controller:
         pass
 
     def update_tracking(self):
-        if len(self.tracked_targets) == 0:
+        self.detector.marker_array = MarkerArray()
+        if len(self.tracked_targets) < 2:
             detected = self.detector.get_detection()
             coord_list = self.detector.get_cone_coordinates(detected)
+            
             for bbox, point in zip(detected, coord_list):
-                self.tracked_targets.append(TrackedTarget(random.randint(1, 101), bbox, point, self.detector.rgb_frame))
+                if self.check_target_validity(bbox):
+                    self.tracked_targets.append(TrackedTarget(random.randint(1, 101), bbox, point, self.detector.rgb_frame))
+            self.detector.marker_pub.publish(detector.marker_array)
 
         for target in self.tracked_targets:
             if not target.update(self.detector.rgb_frame, self.detector.get_cone_coordinate):
                 self.tracked_targets.remove(target)
                 del(target)
+        
+        self.detector.marker_pub.publish(self.detector.marker_array)
+
                 
+    def check_target_validity(self, bbox):
+        tracked_arr = np.array([x.bbox[0] for x in self.tracked_targets])
+        size_constrain = bbox[2]/bbox[3] < 1.0 and bbox[2]/bbox[3] > 0.6 and bbox[2]*bbox[3] < 20000
+        if len(tracked_arr) > 0:
+            if size_constrain and np.min(np.abs(tracked_arr - bbox[0])) > 30:
+                return True
+        else:
+            return size_constrain
+
+        return False
 
     def run(self):
         pass

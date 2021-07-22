@@ -21,7 +21,7 @@ class TrackedTarget:
         self.reset(frame, initBB)
 
     def __del__(self):
-        print("person " + str(self.id) + " is out of frame")
+        print("Cone " + str(self.id) + " is out of frame")
 
     def reset(self, frame, initBB):
         x,y,w,h = initBB[0] - 0.5 * initBB[2], initBB[1] - 0.5 * initBB[3], initBB[2], initBB[3]
@@ -33,8 +33,7 @@ class TrackedTarget:
             (x, y, w, h) = [int(v) for v in box]
             self.bbox = [x + 0.5 * w,y + 0.5 * h,w,h]
             update_coord = get_coord(self.bbox)
-            print(update_coord)
-            if cal_distance(update_coord, self.point) > 0.2:
+            if cal_distance(update_coord, self.point) > 0.5:
                 return False
             self.point = update_coord
         return success

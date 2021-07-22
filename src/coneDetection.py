@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-from yolov5 import YOLOv5
 from yolov5.utils.plots import colors, plot_one_box
-from yolov5.utils.general import xyxy2xywh
 import random
 import rospy
 import message_filters
@@ -15,11 +13,6 @@ from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import PointStamped
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
-
-model_path = "/home/alexlin/catkin_ws/src/jetson-tracker/src/best.pt"
-device = 'cuda'
-net = YOLOv5(model_path, device)
-
 
 class ConeDetector:
 
@@ -62,7 +55,6 @@ class ConeDetector:
         self.marker_array.markers.append(marker)
         cone = PointStamped()
         cone.point.x, cone.point.y, cone.point.z = cone_coord[0], cone_coord[2], cone_coord[1]
-        self.marker_pub.publish(self.marker_array)
 
         cv2.rectangle(self.debug_frame, (int(x-0.5*w), int(y-0.5*h)), (int(x + 0.5*w), int(y + 0.5*h)),
 				(0, 255, 255), 2)
@@ -93,7 +85,6 @@ class ConeDetector:
             cone = PointStamped()
             cone.point.x, cone.point.y, cone.point.z = cone_coord[0], cone_coord[2], cone_coord[1]
             cone_list.append(cone)
-        self.marker_pub.publish(self.marker_array)
 
         return cone_list
 
@@ -158,23 +149,3 @@ class ConeDetector:
             print("got camera info")
             self.camera_model.fromCameraInfo(info)
             self.need_cam_info = False
-
-def callback(rgb_frame, depth_frame, detector, detection_pub):
-    detector.update(rgb_frame, depth_frame)
-    detected = detector.get_detection()
-    coordlist = detector.get_cone_coordinates(detected)
-    detection_pub.publish(detector.bridge.cv2_to_imgmsg(detector.debug_frame, "rgba8"))
-    
-
-if __name__ == '__main__':
-
-    rospy.init_node('ConeDetection', anonymous=True)
-
-    detector = ConeDetector(net)
-    detection_pub = rospy.Publisher("detected_image", Image, queue_size=1)
-    rgb_sub = message_filters.Subscriber('/camera/color/image_raw', Image, queue_size=1)
-    depth_sub = message_filters.Subscriber('/camera/aligned_depth_to_color/image_raw', Image, queue_size=1)
-    ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub], 10, 5, allow_headerless=True)
-    ts.registerCallback(callback, detector, detection_pub)
-    
-    rospy.spin()
