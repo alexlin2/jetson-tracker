@@ -26,10 +26,8 @@ class ConeDetector:
         self.debug_frame = None
         self.need_cam_info = True
         self.camera_model = PinholeCameraModel()
-        self.marker_pub = rospy.Publisher("visualization_markers", MarkerArray, queue_size=1)
         self.camera_info = rospy.Subscriber('/camera/aligned_depth_to_color/camera_info', CameraInfo, self.info_callback)
         self.detected_targets = []
-        self.marker_array = MarkerArray()
 
     def get_detection(self):
         detections = self.net.predict(self.rgb_frame)
@@ -51,8 +49,6 @@ class ConeDetector:
         depth_array = self.depth_frame[int(y-h/10):int(y+h/5),int(x-w/4):int(x+w/4)].flatten()
         depth = np.median(depth_array[np.nonzero(depth_array)]) / 1000
         cone_coord = self._get_coord(depth, x, y)
-        marker = self.make_marker(cone_coord)
-        self.marker_array.markers.append(marker)
         cone = PointStamped()
         cone.point.x, cone.point.y, cone.point.z = cone_coord[0], cone_coord[2], cone_coord[1]
 
@@ -99,36 +95,7 @@ class ConeDetector:
         point_3d = [j * cone_depth for j in normalized_vector]
         return point_3d
 
-    def make_marker(self, point_3d):
-        """
-        Function that creates Marker Spheres for people detected for visualization of people with respect to the camera
-        and car (given camera is attached to car)
-        Adds detections to a MarkerArray List
-        :param point_3d: calcualted 3d point of cone in image
-        :param count: number of people detected
-        """
-        cone_marker = Marker()
-        cone_marker.header.frame_id = "map"
-        cone_marker.ns = "cone" + str(np.random.randint(100))
-        cone_marker.type = cone_marker.CYLINDER
-        cone_marker.action = cone_marker.ADD
-        cone_marker.id = 0
-        cone_marker.pose.position.x = point_3d[0] 
-        cone_marker.pose.position.y = point_3d[2]
-        cone_marker.pose.position.z = point_3d[1]
-        cone_marker.pose.orientation.x = 0.0
-        cone_marker.pose.orientation.y = 0.0
-        cone_marker.pose.orientation.z = 0.0
-        cone_marker.pose.orientation.w = 1.0
-        cone_marker.scale.x = 0.2
-        cone_marker.scale.y = 0.2
-        cone_marker.scale.z = 0.2
-        cone_marker.color.a = 1.0
-        cone_marker.color.r = 1.0
-        cone_marker.color.g = 0.0
-        cone_marker.color.b = 0.0
-        cone_marker.lifetime = rospy.Duration(0.1)
-        return cone_marker
+
 
     def update(self, rgb_frame, depth_frame):
         self.rgb_frame = self.bridge.imgmsg_to_cv2(rgb_frame, "rgb8")
