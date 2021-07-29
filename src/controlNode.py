@@ -12,10 +12,11 @@ import message_filters
 from time import time
 import numpy as np
 import random 
+import math
 
 from sensor_msgs.msg import Image
 
-model_path = "/home/alex/catkin_ws/src/jetson-tracker/src/best.pt"
+model_path = "/home/robotai/catkin_ws/src/jetson-tracker/src/best.pt"
 device = 'cuda'
 net = YOLOv5(model_path, device)
 
@@ -74,8 +75,12 @@ class Controller:
     def get_control(self, waypoint):
         twist = Twist()
         x,y = waypoint.point.x, waypoint.point.y
-        angular_z = np.arctan2(-x,y)
-        linear_x = map(y, 1, 5, 0, 1)
+        if not math.isnan(x) and not math.isnan(y):
+            angular_z = np.arctan2(-x,y) 
+            linear_x = map(y, 0, 5, 0, 1)
+        else:
+            angular_z = 0.0
+            linear_x = 0.0
         print(f"{angular_z:.2f} {linear_x:.2f}")
         twist.linear.x = linear_x
         twist.angular.z = angular_z
