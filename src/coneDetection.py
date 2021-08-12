@@ -34,7 +34,7 @@ class ConeDetector:
         detected = []
         for bbox in detections.pred:
             for *xyxy, cond, cls in bbox:
-                if cls == 0 and cond > 0.7:
+                if cls == 0 and cond > 0.5:
                     x,y,w,h = int(xyxy[0]),int(xyxy[1]),int(xyxy[2] - xyxy[0]),int(xyxy[3]-xyxy[1])
                     if self.debug:
                         label = f'{detections.names[int(cls)]} {cond:.2f}'

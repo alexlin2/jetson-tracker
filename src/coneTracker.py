@@ -1,27 +1,25 @@
 import cv2
 import numpy as np
-from geometry_msgs.msg import PointStamped
+from geometry_msgs.msg import PointStamped, Point
 import rospy
 from random import random
 import math
 from collections import deque
 
 def add_pose_to_point(pose, point):
-    return PointStamped(pose.pose.position.x + point.point.x, pose.pose.position.y + point.point.y, 0)
+    abs_x = pose.pose.position.x
+    abs_y = pose.pose.position.y
+    rel_x = point.point.x
+    rel_y = point.point.y
+    d = np.linalg.norm(np.array([rel_x, rel_y]))
+    theta = np.arctan2(-rel_x, rel_y)
+    return PointStamped(point=Point(pose.pose.position.x + point.point.x, pose.pose.position.y + point.point.y, 0))
 
 def cal_distance(point_x, point_y):
     dx = abs(point_x.point.x - point_y.point.x)
     dy = abs(point_x.point.y - point_y.point.y)
     return np.hypot(dx, dy)
 
-def median_point(point_hist: deque):
-    hist = []
-    for point in point_hist:
-        hist.append([point.point.x, point.point.y])
-    return np.median(np.array(hist))
-
-def midpoint(p1, p2):
-    return (p1.point.x+p2.point.x)/2, (p1.point.y+p2.point.y)/2
 
 class TrackedTarget:
 
@@ -52,37 +50,6 @@ class TrackedTarget:
             self.rel_point = updated_rel_point
             self.abs_point = add_pose_to_point(gps_pose, updated_rel_point)
             self.point_hist.appendleft(self.abs_point)
-        return success, median_point(self.point_hist)
+        return success, self.rel_point
 
-    def get_filtered_pose(self):
-        return median_point(self.point_hist)
 
-class WaypointGate:
-
-    def __init__(self, waypoint_pub) -> None:
-        self.waypoint_pub = waypoint_pub
-        self.waypoint = PointStamped()
-        self.rel_pos = {}
-
-    def get_waypoint_coords(self, cones):
-
-        if len(cones) >= 2:
-            cone_indice = np.argsort(np.array([cone.point.point.y for cone in cones]))[:2]
-            x, y = midpoint(cones[cone_indice[0]].point, cones[cone_indice[1]].point)
-            self.rel_pos[cones[cone_indice[0]].id] = np.array([cones[cone_indice[0]].point.point.x - x, cones[cone_indice[0]].point.point.y - y])
-            self.rel_pos[cones[cone_indice[1]].id] = np.array([cones[cone_indice[1]].point.point.x - x, cones[cone_indice[1]].point.point.y - y])
-            self.waypoint.point.x = x
-            self.waypoint.point.y = y
-            self.waypoint.header.frame_id = "map"
-            self.waypoint_pub.publish(self.waypoint)
-
-        if len(cones) == 1:
-            cone = cones[0]
-            if self.rel_pos.get(cone.id) is not None:
-                rel_pos = self.rel_pos.get(cone.id)
-                self.waypoint.point.x = cone.point.point.x - rel_pos[0]
-                self.waypoint.point.y = cone.point.point.y - rel_pos[1]
-                self.waypoint.header.frame_id = "map"
-                self.waypoint_pub.publish(self.waypoint)
-        
-        return self.waypoint
