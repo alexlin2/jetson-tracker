@@ -84,7 +84,7 @@ class Controller:
         x,y = waypoint.point.x, waypoint.point.y
         if not math.isnan(x) and not math.isnan(y):
             angular_z = np.arctan2(-x,y) 
-            linear_x = 0.0#map(y, 0, 5, 0, 1)
+            linear_x = map(y, 0, 5, 0, 1)
         else:
             angular_z = 0.0
             linear_x = 0.0
@@ -146,6 +146,9 @@ class Controller:
             twist = self.get_control(waypoint)
             pub_command.publish(twist)
         
+        else:
+            t = Twist
+            pub_command.publish(t)
 
 
 def callback(rgb_frame, depth_frame, gps_coord, heading, detector, controller):
