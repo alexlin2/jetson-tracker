@@ -21,7 +21,7 @@ import math
 
 from sensor_msgs.msg import Image
 
-model_path = "/home/robotai/catkin_ws/src/jetson-tracker/src/best.pt"
+model_path = "/home/alexlin/catkin_ws/src/jetson-tracker/src/best.pt"
 device = 'cuda'
 net = YOLOv5(model_path, device)
 
@@ -71,6 +71,7 @@ class Controller:
         self.gps_pose = PoseWithCovarianceStamped()
         self.heading = 0.0
         self.reset_tracking = False
+        self.idx = 0
 
     def reset(self):
         pass
@@ -88,7 +89,7 @@ class Controller:
         else:
             angular_z = 0.0
             linear_x = 0.0
-        print(f"{angular_z:.2f} {linear_x:.2f}")
+        #print(f"{angular_z:.2f} {linear_x:.2f}")
         twist.linear.x = linear_x
         twist.angular.z = angular_z
         return twist
@@ -100,36 +101,35 @@ class Controller:
             coord_list = self.detector.get_cone_coordinates(detected)
             
             for bbox, point in zip(detected, coord_list):
-                if self.check_target_validity(bbox) or len(self.tracked_targets) == 0:
-                    # cone_point = add_pose_to_point(self.gps_pose, point)
-                    # for target in self.tracked_targets:
-                    #     if cal_distance(cone_point, target.get_filtered_pose()) < 1.0:
-                    #         target.reset(self.detector.rgb_frame, bbox)
-                    # else:
-                    self.tracked_targets.append(TrackedTarget(random.randint(1, 101), bbox, point, self.gps_pose, self.detector.rgb_frame))
+                tracked_points = [cal_distance(point, x.rel_point) for x in self.tracked_targets]
+                if self.check_target_validity(bbox, tracked_points) or len(self.tracked_targets) == 0:
+                    self.tracked_targets.append(TrackedTarget(self.idx, bbox, point, self.gps_pose, self.detector.rgb_frame))
+                    self.idx += 1
+                
             self.reset_tracking = False       
             
         for target in self.tracked_targets:
             tracked, rel_coord = target.update(self.detector.rgb_frame, self.detector.get_cone_coordinate, self.gps_pose)
             self.reset_tracking = not tracked
+            print(target.id)
             if not tracked:
-                self.tracked_targets.remove(target)
-                del(target)
+                self.reset_tracking = True
+                target.frames_lost += 1
+                if target.frames_lost > 15:
+                    self.tracked_targets.remove(target)
+                    del(target)
 
             marker = make_marker([rel_coord.point.x, rel_coord.point.y, rel_coord.point.z])
             self.marker_array.markers.append(marker)
 
-
         self.marker_pub.publish(self.marker_array)
 
         return self.tracked_targets
-
                 
-    def check_target_validity(self, bbox):
-        tracked_arr = np.array([x.bbox[0] for x in self.tracked_targets])
-        size_constrain = bbox[2]/bbox[3] < 1.0 and bbox[2]/bbox[3] > 0.6 and bbox[2]*bbox[3] < 30000
-        if len(tracked_arr) > 0:
-            if size_constrain and np.min(np.abs(tracked_arr - bbox[0])) > 30:
+    def check_target_validity(self, bbox, tracked_points):
+        size_constrain = bbox[2]/bbox[3] < 1.1 and bbox[2]/bbox[3] > 0.5 and bbox[2]*bbox[3] < 30000
+        if len(tracked_points) > 0:
+            if size_constrain and np.min(tracked_points) > 0.5:
                 return True
         else:
             return size_constrain
@@ -151,10 +151,12 @@ class Controller:
             pub_command.publish(t)
 
 
-def callback(rgb_frame, depth_frame, gps_coord, heading, detector, controller):
-    controller.update_gps(gps_coord.pose, heading)
-    #pub_pose.publish(gps_coord.pose)
+def callback(rgb_frame, depth_frame, detector):
     detector.update(rgb_frame, depth_frame)
+
+def callback_2(gps_coord, heading, controller):
+    controller.update_gps(gps_coord.pose, heading)
+    pub_pose.publish(gps_coord.pose)
     
 
 if __name__ == '__main__':
@@ -166,7 +168,7 @@ if __name__ == '__main__':
     controller = Controller(detector)
     detection_pub = rospy.Publisher("detected_image", Image, queue_size=1)
     pub_command = rospy.Publisher('/robot/navigation/input', Twist, queue_size=1)
-    #pub_pose = rospy.Publisher('gps/pose', PoseWithCovarianceStamped, queue_size=1)
+    pub_pose = rospy.Publisher('gps/pose', PoseWithCovarianceStamped, queue_size=1)
     rgb_sub = message_filters.Subscriber('/camera/color/image_raw', Image, queue_size=1)
     depth_sub = message_filters.Subscriber('/camera/aligned_depth_to_color/image_raw', Image, queue_size=1)
     gps_sub = message_filters.Subscriber('/mavros/global_position/local', Odometry, queue_size=1)
@@ -177,14 +179,14 @@ if __name__ == '__main__':
     # else: 
     #     print("Home point set failed!")
     waypoint_pub = rospy.Publisher("/waypoint_next", PointStamped, queue_size=1)
-    ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub, gps_sub, compass_sub 
-                                                        ], 10, 5, allow_headerless=True)
-    ts.registerCallback(callback, detector, controller)
+    ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub], 10, 5, allow_headerless=True)
+    ts.registerCallback(callback, detector)
+    ts_2 = message_filters.ApproximateTimeSynchronizer([gps_sub, compass_sub], 10, 5, allow_headerless=True)
+    ts_2.registerCallback(callback_2, controller)
     print("Setup complete!")
     
     while not rospy.is_shutdown():
         if detector.start:
-            #print("detector started!")
             controller.run()
             debug_frame = detector.bridge.cv2_to_imgmsg(detector.debug_frame, "rgb8")
             detection_pub.publish(debug_frame)

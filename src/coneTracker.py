@@ -7,13 +7,13 @@ import math
 from collections import deque
 
 def add_pose_to_point(pose, point):
-    abs_x = pose.pose.position.x
-    abs_y = pose.pose.position.y
+    abs_x = pose.pose.pose.position.x
+    abs_y = pose.pose.pose.position.y
     rel_x = point.point.x
     rel_y = point.point.y
     d = np.linalg.norm(np.array([rel_x, rel_y]))
     theta = np.arctan2(-rel_x, rel_y)
-    return PointStamped(point=Point(pose.pose.position.x + point.point.x, pose.pose.position.y + point.point.y, 0))
+    return PointStamped(point=Point(pose.pose.pose.position.x + point.point.x, pose.pose.pose.position.y + point.point.y, 0))
 
 def cal_distance(point_x, point_y):
     dx = abs(point_x.point.x - point_y.point.x)
@@ -31,12 +31,14 @@ class TrackedTarget:
         self.point_hist = deque(maxlen=50)
         self.tracker = cv2.TrackerKCF_create()
         self.reset(frame, initBB)
+        self.frames_lost = 0
 
     def __del__(self):
         print("Cone " + str(self.id) + " is out of frame")
 
     def reset(self, frame, initBB):
         x,y,w,h = initBB[0] - 0.5 * initBB[2], initBB[1] - 0.5 * initBB[3], initBB[2], initBB[3]
+        self.tracker = cv2.TrackerKCF_create()
         self.tracker.init(frame, [int(x),int(y),int(w),int(h)])
 
     def update(self, frame, get_rel_coord, gps_pose):
@@ -45,7 +47,7 @@ class TrackedTarget:
             (x, y, w, h) = [int(v) for v in box]
             self.bbox = [x + 0.5 * w,y + 0.5 * h,w,h]
             updated_rel_point = get_rel_coord(self.bbox)
-            if cal_distance(updated_rel_point, self.rel_point) > 0.2:
+            if cal_distance(updated_rel_point, self.rel_point) > 0.5:
                 return False, self.abs_point
             self.rel_point = updated_rel_point
             self.abs_point = add_pose_to_point(gps_pose, updated_rel_point)
