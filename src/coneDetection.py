@@ -43,7 +43,7 @@ class ConeDetector:
         self.detected_targets = detected
         return detected
 
-    def get_cone_coordinate(self, xywh):
+    def get_cone_coordinate(self, xywh, id) -> PointStamped:
         x,y,w,h = xywh[0], xywh[1], xywh[2], xywh[3]
         depth = self.depth_frame[int(y), int(x)]
         depth_array = self.depth_frame[int(y-h/10):int(y+h/5),int(x-w/4):int(x+w/4)].flatten()
@@ -54,6 +54,8 @@ class ConeDetector:
 
         cv2.rectangle(self.debug_frame, (int(x-0.5*w), int(y-0.5*h)), (int(x + 0.5*w), int(y + 0.5*h)),
 				(0, 255, 255), 2)
+
+        cv2.putText(self.debug_frame, "cone id: " + id, (int(x-0.5*w), int(y-0.5*h-10)), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 0, 0), 2, cv2.LINE_AA)
 
         return cone
 

@@ -1,10 +1,10 @@
+#!/usr/bin/env python3
 import cv2
 import numpy as np
+import pandas as pd
 from geometry_msgs.msg import PointStamped, Point
-import rospy
-from random import random
-import math
-from collections import deque
+from sensor_msgs.msg import NavSatFix
+
 
 def add_pose_to_point(pose, point):
     abs_x = pose.pose.position.x
@@ -21,35 +21,47 @@ def cal_distance(point_x, point_y):
     return np.hypot(dx, dy)
 
 
-class TrackedTarget:
+def get_cone_waypoints(filename):
+    cones = []
+    df = pd.read_csv(filename)
+    longlat_arr = np.array([df['latitude'].to_numpy(),df['longitude'].to_numpy()]).T
+    for _, row in df.iterrows():
+        waypoint = ConeWaypoints(str(row['id']), row['latitude'], row['longitude'], row['altitude'])
+        cones.append(waypoint)
 
-    def __init__(self, id, initBB, init_pos, init_gps_pose, frame):
+    return cones, longlat_arr
+
+class ConeWaypoints:
+
+    def __init__(self, id, lat, long, alt):
         self.id = id
-        self.bbox = initBB
-        self.rel_point = init_pos
-        self.abs_point = add_pose_to_point(init_gps_pose, init_pos)
-        self.point_hist = deque(maxlen=50)
+        self.bbox = []
+        self.rel_point = PointStamped()
+        self.gps_coord = NavSatFix(latitude=lat, longitude=long, altitude=alt)
         self.tracker = cv2.TrackerKCF_create()
-        self.reset(frame, initBB)
+        self.tracked = False
 
-    def __del__(self):
-        print("Cone " + str(self.id) + " is out of frame")
+    def reset(self, frame, initBB, get_rel_coord):
+        x,y,w,h = initBB[0], initBB[1], initBB[2], initBB[3]
+        self.bbox = [x,y,w,h]
+        self.rel_point = get_rel_coord(self.bbox, self.id)
+        self.tracker = cv2.TrackerKCF_create()
+        self.tracker.init(frame, [int(initBB[0] - 0.5 * initBB[2]),int(initBB[1] - 0.5 * initBB[3]),int(w),int(h)])
 
-    def reset(self, frame, initBB):
-        x,y,w,h = initBB[0] - 0.5 * initBB[2], initBB[1] - 0.5 * initBB[3], initBB[2], initBB[3]
-        self.tracker.init(frame, [int(x),int(y),int(w),int(h)])
-
-    def update(self, frame, get_rel_coord, gps_pose):
+    def update(self, frame, get_rel_coord):
         success, box =self.tracker.update(cv2.cvtColor(frame, cv2.COLOR_RGBA2RGB))
         if success:
             (x, y, w, h) = [int(v) for v in box]
             self.bbox = [x + 0.5 * w,y + 0.5 * h,w,h]
-            updated_rel_point = get_rel_coord(self.bbox)
-            if cal_distance(updated_rel_point, self.rel_point) > 0.2:
-                return False, self.abs_point
+            updated_rel_point = get_rel_coord(self.bbox, self.id)
+            if cal_distance(updated_rel_point, self.rel_point) > 0.5:
+                self.tracked = False
+                return False
             self.rel_point = updated_rel_point
-            self.abs_point = add_pose_to_point(gps_pose, updated_rel_point)
-            self.point_hist.appendleft(self.abs_point)
-        return success, self.rel_point
+        self.tracked = success
+        return success
 
-
+if __name__ == '__main__':
+    cones, latlong_arr = get_cone_waypoints("data.csv")
+    for cone in cones:
+        print(cone.gps_location)
