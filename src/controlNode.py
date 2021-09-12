@@ -28,12 +28,31 @@ def map(x, in_min, in_max, out_min, out_max):
     return float((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
 
 def get_distance_and_bearing(lat1, long1, lat2, long2):
+    '''
+    @params lat1: latitude of first point,
+            long1: longitude of first point, 
+            lat2: latitude of second point,
+            long2: longitude of second point
+
+    @return distance: distance between two points,
+            bearing: bearing of point 2 relative to point 1
+    '''
     geodict = Geodesic.WGS84.Inverse(lat1, long1, lat2, long2)
     bearing = geodict['azi1'] 
     if bearing < 0: bearing += 360
     return geodict['s12'], bearing
 
 def get_cone_coord(car_lat, car_long, camera_x, camera_y, heading):
+    '''
+    @params car_lat: latitude of car,
+            car_long: longitude of car, 
+            camera_x: x-axis position of cone relative to the camera,
+            camera_y: y-axis position of cone relative to the camera,
+            heading: current compass heading of the car
+
+    @return latitude and longitude of the car
+            
+    '''
     theta = np.deg2rad(heading)
     c, s = np.cos(theta), np.sin(theta)
     R = np.array(((c, -s), (s, c)))
@@ -58,15 +77,36 @@ class Controller:
         self.longlat_arr = longlat_arr
 
     def reset(self):
+        '''
+        not implemented
+        '''
         pass
     
     def update_gps(self, gps_coord):
+        '''
+        @params gps_coord: current gps coordinate of car
+
+        updates the gps coordinate of the car
+                
+        '''
         self.gps_coord = gps_coord
 
     def update_heading(self, heading):
+        '''
+        @params heading: current gps coordinate of car
+
+        updates the compass heading of the car
+                
+        '''
         self.heading = heading
 
     def get_control(self, waypoint):
+        '''
+        @params gps_coord: waypoint coordinate of the next cone
+
+        @return twist message to control the car
+                
+        '''
         twist = Twist()
         x,y = waypoint.point.x, waypoint.point.y
         if not math.isnan(x) and not math.isnan(y):
@@ -81,6 +121,14 @@ class Controller:
         return twist
 
     def update_tracking(self):
+        '''
+        core logic (still work in progress, will be commented once finished)
+
+        @return current cone object, 
+                distance to the current tracked cone,
+                bearing to the current tracked cone
+
+        '''
         waypoint_dist = 0
         waypoint_bearing = 0
         if self.coneWaypoint is None or self.reset_tracking:
@@ -122,9 +170,23 @@ class Controller:
 
                 
     def check_target_validity(self, bbox):
+        '''
+        @params bbox: bounding box of cone seen in the RGB frame
+
+        @return True | False of 
+
+        determines the validity of the tracked bounding box by calculating the size and ratio of height / width
+                
+        '''
         return bbox[2]/bbox[3] < 1.0 and bbox[2]/bbox[3] > 0.6 and bbox[2]*bbox[3] < 30000
 
     def run(self):
+        '''
+        main loop 
+
+        prints the distance and bearing to the next cone waypoint
+                
+        '''
         
         cone, dist, bearing = self.update_tracking()
         
@@ -141,12 +203,24 @@ class Controller:
 
 
 def callback(rgb_frame, depth_frame, detector):
+    '''
+    callback function that updates the rgb and depth frame  
+
+    '''
     detector.update(rgb_frame, depth_frame)
 
 def callback_gps(gps_coord, controller):
+    '''
+    callback function that updates the gps coordinate
+       
+    '''
     controller.update_gps(gps_coord)
     
 def callback_heading(heading, controller):
+    '''
+    callback function that updates the heading
+       
+    '''
     controller.update_heading(heading)
         
 

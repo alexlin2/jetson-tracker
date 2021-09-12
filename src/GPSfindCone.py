@@ -1,13 +1,33 @@
 import numpy as np
 from geographiclib.geodesic import Geodesic
 
+
 def get_distance_and_bearing(lat1, long1, lat2, long2):
+    '''
+    @params lat1: latitude of first point,
+            long1: longitude of first point, 
+            lat2: latitude of second point,
+            long2: longitude of second point
+
+    @return distance: distance between two points,
+            bearing: bearing of point 2 relative to point 1
+    '''
     geodict = Geodesic.WGS84.Inverse(lat1, long1, lat2, long2)
     bearing = geodict['azi1'] 
     if bearing < 0: bearing += 360
     return geodict['s12'], bearing
 
 def get_cone_coord(car_lat, car_long, camera_x, camera_y, heading):
+    '''
+    @params car_lat: latitude of car,
+            car_long: longitude of car, 
+            camera_x: x-axis position of cone relative to the camera,
+            camera_y: y-axis position of cone relative to the camera,
+            heading: current compass heading of the car
+
+    @return latitude and longitude of the car
+            
+    '''
     theta = np.deg2rad(heading)
     c, s = np.cos(theta), np.sin(theta)
     R = np.array(((c, -s), (s, c)))
@@ -20,6 +40,8 @@ def get_cone_coord(car_lat, car_long, camera_x, camera_y, heading):
     return geodict['lat2'], geodict['lon2']
 
 if __name__ == '__main__':
+
+    # tests to verify that the code is working 
     lat1, long1, lat2, long2 = 47.673057, -122.310880, 47.672974, -122.311058
     dist, bearing = get_distance_and_bearing(lat1, long1, lat2, long2)
     print("distance: " + str(dist) + " bearing: " + str(bearing))
