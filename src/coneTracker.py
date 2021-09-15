@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from geometry_msgs.msg import PointStamped, Point
 from sensor_msgs.msg import NavSatFix
+from GPSfindCone import get_cone_coord, get_distance_and_bearing
 
 
 def add_pose_to_point(pose, point):

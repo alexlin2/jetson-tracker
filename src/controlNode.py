@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from coneTracker import get_cone_waypoints
 from coneDetection import ConeDetector
+from GPSfindCone import get_cone_coord, get_distance_and_bearing
 from visualization_msgs.msg import Marker, MarkerArray
 
 from geometry_msgs.msg import Twist, PointStamped, PoseWithCovarianceStamped, Quaternion
@@ -12,6 +13,7 @@ from geographiclib.geodesic import Geodesic
 
 import rospy
 import message_filters
+from collections import deque
 
 from time import time
 import numpy as np
@@ -27,41 +29,6 @@ net = YOLOv5(model_path, device)
 def map(x, in_min, in_max, out_min, out_max):
     return float((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
 
-def get_distance_and_bearing(lat1, long1, lat2, long2):
-    '''
-    @params lat1: latitude of first point,
-            long1: longitude of first point, 
-            lat2: latitude of second point,
-            long2: longitude of second point
-
-    @return distance: distance between two points,
-            bearing: bearing of point 2 relative to point 1
-    '''
-    geodict = Geodesic.WGS84.Inverse(lat1, long1, lat2, long2)
-    bearing = geodict['azi1'] 
-    if bearing < 0: bearing += 360
-    return geodict['s12'], bearing
-
-def get_cone_coord(car_lat, car_long, camera_x, camera_y, heading):
-    '''
-    @params car_lat: latitude of car,
-            car_long: longitude of car, 
-            camera_x: x-axis position of cone relative to the camera,
-            camera_y: y-axis position of cone relative to the camera,
-            heading: current compass heading of the car
-
-    @return latitude and longitude of the car
-            
-    '''
-    theta = np.deg2rad(heading)
-    c, s = np.cos(theta), np.sin(theta)
-    R = np.array(((c, -s), (s, c)))
-    world_pos = np.matmul(np.linalg.inv(R), np.array([[camera_x, camera_y]]).T)
-    dist = np.linalg.norm(world_pos,axis=0)
-    angle = -np.rad2deg(np.arctan2(world_pos[1,0], world_pos[0,0]))+90
-    geodict = Geodesic.WGS84.Direct(car_lat, car_long, angle, dist)
-    
-    return geodict['lat2'], geodict['lon2']
 
 class Controller:
 
@@ -75,6 +42,7 @@ class Controller:
         self.reset_tracking = False
         self.cones = cones
         self.longlat_arr = longlat_arr
+        self.heading_hist = deque(maxlen=10)
 
     def reset(self):
         '''
@@ -89,11 +57,14 @@ class Controller:
         updates the gps coordinate of the car
                 
         '''
+        _, bearing = get_distance_and_bearing(self.gps_coord.latitude, self.gps_coord.longitude, gps_coord.latitude, gps_coord.longitude)
+        self.heading_hist.appendleft(bearing)
+        self.heading = np.mean(self.heading_hist)
         self.gps_coord = gps_coord
 
     def update_heading(self, heading):
         '''
-        @params heading: current gps coordinate of car
+        @params heading: current heading of car
 
         updates the compass heading of the car
                 
@@ -146,21 +117,22 @@ class Controller:
                 self.coneWaypoint = self.cones[np.argmin(dist_arr)]
                 self.coneWaypoint.reset(self.detector.rgb_frame, detected[closest_cone_idx], self.detector.get_cone_coordinate)
                 waypoint_dist, waypoint_bearing = get_distance_and_bearing(self.gps_coord.latitude, self.gps_coord.longitude, \
-                                                                            lat, long)
+                                                                            lat,  long)
                 self.reset_tracking = False
         else:
             if self.coneWaypoint.update(self.detector.rgb_frame, self.detector.get_cone_coordinate):
                 lat, long = get_cone_coord(self.gps_coord.latitude, self.gps_coord.longitude, \
                                                         self.coneWaypoint.rel_point.point.x, self.coneWaypoint.rel_point.point.y, self.heading)
                 dist_arr = np.zeros(len(self.cones))
+                #print(self.heading)
                 for idx, cone in enumerate(self.cones):
                     dist, _ = get_distance_and_bearing(lat, long, cone.gps_coord.latitude, cone.gps_coord.longitude)
                     dist_arr[idx] = dist
-                print(dist_arr)
-                if np.argmin(dist_arr) != self.cones.index(self.coneWaypoint):
+                #print(dist_arr)
+                if np.argmin(dist_arr) != self.cones.index(self.coneWaypoint) or np.argmin(dist_arr) > 10.0:
                     self.reset_tracking = True
                 waypoint_dist, waypoint_bearing = get_distance_and_bearing(self.gps_coord.latitude, self.gps_coord.longitude, \
-                                                                        lat, long)
+                                                                        lat,  long)
             else:
                 self.reset_tracking = True
                 self.coneWaypoint = None
@@ -239,7 +211,7 @@ if __name__ == '__main__':
     rgb_sub = message_filters.Subscriber('/camera/color/image_raw', Image, queue_size=1)
     depth_sub = message_filters.Subscriber('/camera/aligned_depth_to_color/image_raw', Image, queue_size=1)
     gps_sub = rospy.Subscriber('/mavros/global_position/global', NavSatFix, callback_gps, callback_args=controller, queue_size=1)
-    compass_sub = rospy.Subscriber('mavros/global_position/compass_hdg', Float64, callback_heading, callback_args=controller, queue_size=1)
+    #compass_sub = rospy.Subscriber('mavros/global_position/compass_hdg', Float64, callback_heading, callback_args=controller, queue_size=1)
     # set_home = rospy.ServiceProxy("/mavros/cmd/set_home", CommandHome)
     # if set_home(yaw=0.0, latitude= 0.0,longitude= 0.0, altitude= 0.0):
     #     print("Correct home point set!")
