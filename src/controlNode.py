@@ -1,35 +1,77 @@
+########################################
+#	Vehicle localization from landmark recognition
+#
+# 	Matthew (MJ) Moscola & Zhengzhi (Alex) Lin
+#	September, 2021
+#   
+# 	The Vehicle Coordinate system has its origin at the vehicle centroid. The X-axis points forward, Y 
+#	to the left, and Z up.
+#	The origin of the World Coordinate system is set arbitrarily. The X-axis points east, Y north, and Z 
+#	up.
+#	The Camera Coordinate (CC) system has its origin at the focal point of the camera. The Z-axis is
+#	depth. In the image, the X-axis points right and the y-axis down.
+#	Distances in all coordinate systems are in meters.
+#
+#	A vehicle finds the distance and bearing to a landmark, whose location is known.
+#	Based on the position of the landmark, the vehicle then updates its own estimated position.
+#	We use large cones at known positions as a stand-in for landmarks. There are assumed to be no 
+#	stray cones on the course.
+########################################
+
 #!/usr/bin/env python3
+
+# import functions from coneTracker, coneDetection, and GPSfindCone
 from coneTracker import get_cone_waypoints
 from coneDetection import ConeDetector
 from GPSfindCone import get_cone_coord, get_distance_and_bearing
-from visualization_msgs.msg import Marker, MarkerArray
 
+# import ROS messages to communicate with the pixhawk
+from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Twist, PointStamped, PoseWithCovarianceStamped, Quaternion
 from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import Float64
+from sensor_msgs.msg import Image
+import rospy
+import message_filters
+
+# import YOLO to detect cones
 from yolov5 import YOLOv5
+
+# import linear algebra and GPS libraries
 from scipy.spatial.transform import Rotation as R
 from geographiclib.geodesic import Geodesic
 
-import rospy
-import message_filters
-from collections import deque
-
+# import system libraries
 from time import time
 import numpy as np
 import random 
 import math
 
-from sensor_msgs.msg import Image
 
+# specify where the cone detection model is
 model_path = "/home/alexlin/catkin_ws/src/jetson-tracker/src/best.pt"
 device = 'cuda'
 net = YOLOv5(model_path, device)
 
+
 def map(x, in_min, in_max, out_min, out_max):
+    ######################################
+    '''
+    linearly scales and offsets an input value
+
+    Input:    x: data, 
+              in_min: minimum of input value,
+              in_max: maximum of input value,
+              out_min: minimum of output value,
+              out_max: minimum of output value,
+          
+    Output:   transformed value of input value
+
+    '''
+    ######################################
     return float((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
 
-
+# Main Controller that integrates cone detection, cone tracking and vehicle controller
 class Controller:
 
     def __init__(self, detector, cones, longlat_arr) -> None:
@@ -43,41 +85,43 @@ class Controller:
         self.cones = cones
         self.longlat_arr = longlat_arr
         self.heading_hist = deque(maxlen=10)
-
-    def reset(self):
-        '''
-        not implemented
-        '''
-        pass
     
     def update_gps(self, gps_coord):
+        ######################################
         '''
-        @params gps_coord: current gps coordinate of car
-
         updates the gps coordinate of the car
-                
+
+        Input: gps_coord: current gps coordinate of car
+
         '''
+        ######################################
         _, bearing = get_distance_and_bearing(self.gps_coord.latitude, self.gps_coord.longitude, gps_coord.latitude, gps_coord.longitude)
         self.heading_hist.appendleft(bearing)
         self.heading = np.mean(self.heading_hist)
         self.gps_coord = gps_coord
 
     def update_heading(self, heading):
+        ######################################
         '''
-        @params heading: current heading of car
-
         updates the compass heading of the car
-                
+
+        Input: heading: current heading of car
+
         '''
+        ######################################
         self.heading = heading
 
     def get_control(self, waypoint):
+        ######################################
         '''
-        @params gps_coord: waypoint coordinate of the next cone
+        Returns the control messages that gets sent to the car
 
-        @return twist message to control the car
+        Input: gps_coord: waypoint coordinate of the next cone
+
+        Output: ROS twist message that contains the steering and throttle value to control the car
                 
         '''
+        ######################################
         twist = Twist()
         x,y = waypoint.point.x, waypoint.point.y
         if not math.isnan(x) and not math.isnan(y):
@@ -92,14 +136,16 @@ class Controller:
         return twist
 
     def update_tracking(self):
+        ######################################
         '''
-        core logic (still work in progress, will be commented once finished)
+        Returns the cone that the car is currently tracking, and the distance and bearing to the cone
 
-        @return current cone object, 
+        Output: current cone object, 
                 distance to the current tracked cone,
                 bearing to the current tracked cone
 
         '''
+        ######################################
         waypoint_dist = 0
         waypoint_bearing = 0
         if self.coneWaypoint is None or self.reset_tracking:
@@ -142,24 +188,27 @@ class Controller:
 
                 
     def check_target_validity(self, bbox):
+        ######################################
         '''
+        determines the validity of the tracked bounding box by calculating the size and ratio of height / width
+
         @params bbox: bounding box of cone seen in the RGB frame
 
-        @return True | False of 
-
-        determines the validity of the tracked bounding box by calculating the size and ratio of height / width
-                
+        @return True | False 
+       
         '''
+        ######################################
         return bbox[2]/bbox[3] < 1.0 and bbox[2]/bbox[3] > 0.6 and bbox[2]*bbox[3] < 30000
 
     def run(self):
+        ######################################
         '''
-        main loop 
+        main control loop 
 
-        prints the distance and bearing to the next cone waypoint
+        Still work in progress
                 
         '''
-        
+        ######################################
         cone, dist, bearing = self.update_tracking()
         
         if cone is not None:

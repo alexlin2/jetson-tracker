@@ -1,3 +1,22 @@
+########################################
+#	Vehicle localization from landmark recognition
+#
+# 	Matthew (MJ) Moscola & Zhengzhi (Alex) Lin
+#	September, 2021
+#   
+# 	The Vehicle Coordinate system has its origin at the vehicle centroid. The X-axis points forward, Y 
+#	to the left, and Z up.
+#	The origin of the World Coordinate system is set arbitrarily. The X-axis points east, Y north, and Z 
+#	up.
+#	The Camera Coordinate (CC) system has its origin at the focal point of the camera. The Z-axis is
+#	depth. In the image, the X-axis points right and the y-axis down.
+#	Distances in all coordinate systems are in meters.
+#
+#	Use a neural network to detect the bounding box of the cone and then use the depth camera to detect
+#   where the cone is in the 3D space
+#	
+########################################
+
 #!/usr/bin/env python3
 from yolov5.utils.plots import colors, plot_one_box
 import random
