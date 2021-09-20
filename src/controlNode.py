@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 ########################################
 #	Vehicle localization from landmark recognition
 #
@@ -18,7 +20,6 @@
 #	stray cones on the course.
 ########################################
 
-#!/usr/bin/env python3
 
 # import functions from coneTracker, coneDetection, and GPSfindCone
 from coneTracker import get_cone_waypoints
@@ -46,10 +47,10 @@ from time import time
 import numpy as np
 import random 
 import math
-
+from collections import deque
 
 # specify where the cone detection model is
-model_path = "/home/alexlin/catkin_ws/src/jetson-tracker/src/best.pt"
+model_path = "/home/robotai/catkin_ws/src/jetson-tracker/src/best.pt"
 device = 'cuda'
 net = YOLOv5(model_path, device)
 
@@ -250,7 +251,7 @@ if __name__ == '__main__':
     rospy.init_node('controller', anonymous=True)
     print("node initialized")
 
-    cones, longlat_arr = get_cone_waypoints("/home/alexlin/catkin_ws/src/jetson-tracker/data.csv")
+    cones, longlat_arr = get_cone_waypoints("/home/robotai/catkin_ws/src/jetson-tracker/data.csv")
 
     detector = ConeDetector(net)
     controller = Controller(detector, cones, longlat_arr)

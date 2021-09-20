@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 ########################################
 #	Vehicle localization from landmark recognition
 #
@@ -17,7 +18,6 @@
 #	
 ########################################
 
-#!/usr/bin/env python3
 from yolov5.utils.plots import colors, plot_one_box
 import random
 import rospy
