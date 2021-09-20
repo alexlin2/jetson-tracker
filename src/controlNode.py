@@ -34,6 +34,7 @@ from std_msgs.msg import Float64
 from sensor_msgs.msg import Image
 import rospy
 import message_filters
+from convertImage import convert_cv2_to_rosimg
 
 # import YOLO to detect cones
 from yolov5 import YOLOv5
@@ -277,5 +278,5 @@ if __name__ == '__main__':
         if detector.start:
             #print("detector started!")
             controller.run()
-            debug_frame = detector.bridge.cv2_to_imgmsg(detector.debug_frame, "rgb8")
+            debug_frame = convert_cv2_to_rosimg(detector.debug_frame, "rgb8")
             detection_pub.publish(debug_frame)

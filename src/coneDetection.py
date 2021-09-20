@@ -31,12 +31,11 @@ from sensor_msgs.msg import CameraInfo
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import PointStamped
 from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
+from convertImage import convert_rosimg_to_cv2
 
 class ConeDetector:
 
     def __init__(self, net, debug = True):
-        self.bridge = CvBridge()
         self.debug = debug
         self.net = net
         self.start= False
@@ -119,13 +118,13 @@ class ConeDetector:
 
 
     def update(self, rgb_frame, depth_frame):
-        self.rgb_frame = self.bridge.imgmsg_to_cv2(rgb_frame, "rgb8")
+        self.rgb_frame = convert_rosimg_to_cv2(rgb_frame, "rgb8")
         # depth_frame_16 = self.bridge.imgmsg_to_cv2(depth_frame, "passthrough")
         # df_dp = np.expand_dims(depth_frame_16, axis=-1).astype(np.uint8)
         # df_dp = np.tile(df_dp, (1, 1, 3))
         # self.debug_frame = cv2.cvtColor(df_dp, cv2.COLOR_RGB2RGBA)
-        self.debug_frame = self.bridge.imgmsg_to_cv2(rgb_frame, "rgb8")
-        self.depth_frame = self.bridge.imgmsg_to_cv2(depth_frame, "passthrough")
+        self.debug_frame = convert_rosimg_to_cv2(rgb_frame, "rgb8")
+        self.depth_frame = convert_rosimg_to_cv2(depth_frame, "passthrough")
         self.start = True
 
     def info_callback(self, info):

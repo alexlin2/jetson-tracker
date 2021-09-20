@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 ########################################
 #	Vehicle localization from landmark recognition
 #
@@ -16,23 +17,13 @@
 
 ########################################
 
-#!/usr/bin/env python3
+
 import cv2
 import numpy as np
 import pandas as pd
 from geometry_msgs.msg import PointStamped, Point
 from sensor_msgs.msg import NavSatFix
 from GPSfindCone import get_cone_coord, get_distance_and_bearing
-
-
-def add_pose_to_point(pose, point):
-    abs_x = pose.pose.position.x
-    abs_y = pose.pose.position.y
-    rel_x = point.point.x
-    rel_y = point.point.y
-    d = np.linalg.norm(np.array([rel_x, rel_y]))
-    theta = np.arctan2(-rel_x, rel_y)
-    return PointStamped(point=Point(pose.pose.position.x + point.point.x, pose.pose.position.y + point.point.y, 0))
 
 def cal_distance(point_x, point_y):
     dx = abs(point_x.point.x - point_y.point.x)
